@@ -16,7 +16,7 @@ import (
 	sdk "github.com/cosmos/cosmos-sdk/types"
 
 	wasm "github.com/CosmWasm/wasmd/x/wasm/types"
-	ibcconntypes "github.com/cosmos/ibc-go/v8/modules/core/03-connection/types"
+	ibcconntypes "github.com/cosmos/ibc-go/v10/modules/core/03-connection/types"
 )
 
 var (

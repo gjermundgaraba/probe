@@ -10,6 +10,7 @@ import (
 )
 
 // Upgrades list of chain upgrades
+// TODO: CREATE v10 upgrade
 var Upgrades = []upgrades.Upgrade{}
 
 // RegisterUpgradeHandlers registers the chain upgrade handlers
@@ -24,7 +25,6 @@ func (app *ChainApp) RegisterUpgradeHandlers() {
 		AccountKeeper:         &app.AccountKeeper,
 		ParamsKeeper:          &app.ParamsKeeper,
 		ConsensusParamsKeeper: &app.ConsensusParamsKeeper,
-		CapabilityKeeper:      app.CapabilityKeeper,
 		IBCKeeper:             app.IBCKeeper,
 		Codec:                 app.appCodec,
 		GetStoreKey:           app.GetKey,
