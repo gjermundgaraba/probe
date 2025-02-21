@@ -7,13 +7,13 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
-	"strings"
 	"sync"
 
 	abci "github.com/cometbft/cometbft/abci/types"
 	tmproto "github.com/cometbft/cometbft/proto/tendermint/types"
 	dbm "github.com/cosmos/cosmos-db"
 	"github.com/cosmos/gogoproto/proto"
+	ibccallbacks "github.com/cosmos/ibc-go/modules/apps/callbacks"
 	"github.com/cosmos/ibc-go/modules/capability"
 	capabilitykeeper "github.com/cosmos/ibc-go/modules/capability/keeper"
 	capabilitytypes "github.com/cosmos/ibc-go/modules/capability/types"
@@ -135,7 +135,7 @@ import (
 	"github.com/CosmWasm/wasmd/x/wasm"
 	wasmkeeper "github.com/CosmWasm/wasmd/x/wasm/keeper"
 	wasmtypes "github.com/CosmWasm/wasmd/x/wasm/types"
-	wasmvm "github.com/CosmWasm/wasmvm"
+	wasmvm "github.com/CosmWasm/wasmvm/v2"
 
 	wasmlc "github.com/cosmos/ibc-go/modules/light-clients/08-wasm"
 	wasmlckeeper "github.com/cosmos/ibc-go/modules/light-clients/08-wasm/keeper"
@@ -144,10 +144,6 @@ import (
 	"github.com/cosmos/ibc-apps/middleware/packet-forward-middleware/v8/packetforward"
 	packetforwardkeeper "github.com/cosmos/ibc-apps/middleware/packet-forward-middleware/v8/packetforward/keeper"
 	packetforwardtypes "github.com/cosmos/ibc-apps/middleware/packet-forward-middleware/v8/packetforward/types"
-
-	ratelimit "github.com/cosmos/ibc-apps/modules/rate-limiting/v8"
-	ratelimitkeeper "github.com/cosmos/ibc-apps/modules/rate-limiting/v8/keeper"
-	ratelimittypes "github.com/cosmos/ibc-apps/modules/rate-limiting/v8/types"
 
 	distr "github.com/cosmos/cosmos-sdk/x/distribution"
 	"github.com/cosmos/cosmos-sdk/x/gov"
@@ -158,16 +154,6 @@ const (
 	appName      = "probe"
 	NodeDir      = ".probe"
 	Bech32Prefix = "probe"
-)
-
-var (
-	capabilities = strings.Join(
-		[]string{
-			"iterator",
-			"staking",
-			"stargate",
-			"cosmwasm_1_1", "cosmwasm_1_2", "cosmwasm_1_3", "cosmwasm_1_4",
-		}, ",")
 )
 
 // These constants are derived from the above variables.
@@ -255,7 +241,6 @@ type ChainApp struct {
 	WasmKeeper          wasmkeeper.Keeper
 	PacketForwardKeeper *packetforwardkeeper.Keeper
 	WasmClientKeeper    wasmlckeeper.Keeper
-	RatelimitKeeper     ratelimitkeeper.Keeper
 
 	ScopedIBCKeeper           capabilitykeeper.ScopedKeeper
 	ScopedICAHostKeeper       capabilitykeeper.ScopedKeeper
@@ -374,7 +359,6 @@ func NewChainApp(
 		icacontrollertypes.StoreKey,
 		packetforwardtypes.StoreKey,
 		wasmlctypes.StoreKey,
-		ratelimittypes.StoreKey,
 	)
 
 	tkeys := storetypes.NewTransientStoreKeys(paramstypes.TStoreKey)
@@ -628,24 +612,12 @@ func NewChainApp(
 		app.IBCKeeper.PortKeeper, app.AccountKeeper, app.BankKeeper,
 	)
 
-	// Create the ratelimit keeper
-	app.RatelimitKeeper = *ratelimitkeeper.NewKeeper(
-		appCodec,
-		runtime.NewKVStoreService(keys[ratelimittypes.StoreKey]),
-		app.GetSubspace(ratelimittypes.ModuleName),
-		authtypes.NewModuleAddress(govtypes.ModuleName).String(),
-		app.BankKeeper,
-		app.IBCKeeper.ChannelKeeper,
-		app.IBCFeeKeeper, // ICS4Wrapper
-	)
-
 	// Create Transfer Keepers
 	app.TransferKeeper = ibctransferkeeper.NewKeeper(
 		appCodec,
 		keys[ibctransfertypes.StoreKey],
 		app.GetSubspace(ibctransfertypes.ModuleName),
-		app.RatelimitKeeper, // ICS4Wrapper
-		//app.IBCFeeKeeper,
+		app.IBCKeeper.ChannelKeeper,
 		app.IBCKeeper.ChannelKeeper,
 		app.IBCKeeper.PortKeeper,
 		app.AccountKeeper,
@@ -692,8 +664,8 @@ func NewChainApp(
 		authtypes.NewModuleAddress(govtypes.ModuleName).String(),
 	)
 
-	wasmDir := filepath.Join(homePath, "data")
-	wasmConfig, err := wasm.ReadWasmConfig(appOpts)
+	wasmDir := filepath.Join(homePath, "wasm")
+	nodeConfig, err := wasm.ReadNodeConfig(appOpts)
 	if err != nil {
 		panic(fmt.Sprintf("error while reading wasm config: %s", err))
 	}
@@ -715,8 +687,9 @@ func NewChainApp(
 		app.MsgServiceRouter(),
 		app.GRPCQueryRouter(),
 		wasmDir,
-		wasmConfig,
-		strings.Join(AllCapabilities(), ","),
+		nodeConfig,
+		wasmtypes.VMConfig{},
+		wasmkeeper.BuiltInCapabilities(),
 		authtypes.NewModuleAddress(govtypes.ModuleName).String(),
 		wasmOpts...,
 	)
@@ -737,7 +710,7 @@ func NewChainApp(
 	dataDir := filepath.Join(homePath, "data")
 
 	var memCacheSizeMB uint32 = 100
-	lc08, err := wasmvm.NewVM(filepath.Join(dataDir, "08-light-client"), capabilities, 32, false, memCacheSizeMB)
+	lc08, err := wasmvm.NewVM(filepath.Join(dataDir, "08-light-client"), wasmkeeper.BuiltInCapabilities(), 32, false, memCacheSizeMB)
 	if err != nil {
 		panic(fmt.Sprintf("failed to create VM for 08 light client: %s", err))
 	}
@@ -752,10 +725,17 @@ func NewChainApp(
 		wasmlckeeper.WithQueryPlugins(&wasmLightClientQuerier),
 	)
 
+	// Middleware Stacks
+	maxCallbackGas := uint64(1_000_000)
+
+	var wasmStack porttypes.IBCModule
+	wasmStackIBCHandler := wasm.NewIBCHandler(app.WasmKeeper, app.IBCKeeper.ChannelKeeper, app.IBCFeeKeeper)
+	wasmStack = ibcfee.NewIBCMiddleware(wasmStackIBCHandler, app.IBCFeeKeeper)
+
 	// Create Transfer Stack
 	var transferStack porttypes.IBCModule
 	transferStack = transfer.NewIBCModule(app.TransferKeeper)
-	transferStack = ratelimit.NewIBCMiddleware(app.RatelimitKeeper, transferStack)
+	transferStack = ibccallbacks.NewIBCMiddleware(transferStack, app.IBCFeeKeeper, wasmStackIBCHandler, maxCallbackGas)
 	transferStack = ibcfee.NewIBCMiddleware(transferStack, app.IBCFeeKeeper)
 	transferStack = packetforward.NewIBCMiddleware(
 		transferStack,
@@ -779,10 +759,6 @@ func NewChainApp(
 	var icaHostStack porttypes.IBCModule
 	icaHostStack = icahost.NewIBCModule(app.ICAHostKeeper)
 	icaHostStack = ibcfee.NewIBCMiddleware(icaHostStack, app.IBCFeeKeeper)
-
-	var wasmStack porttypes.IBCModule // Create fee enabled wasm ibc Stack
-	wasmStack = wasm.NewIBCHandler(app.WasmKeeper, app.IBCKeeper.ChannelKeeper, app.IBCFeeKeeper)
-	wasmStack = ibcfee.NewIBCMiddleware(wasmStack, app.IBCFeeKeeper)
 
 	// Create static IBC router, add app routes, then set and seal it
 	ibcRouter := porttypes.NewRouter()
@@ -843,7 +819,6 @@ func NewChainApp(
 		// custom
 		packetforward.NewAppModule(app.PacketForwardKeeper, app.GetSubspace(packetforwardtypes.ModuleName)),
 		wasmlc.NewAppModule(app.WasmClientKeeper),
-		ratelimit.NewAppModule(appCodec, app.RatelimitKeeper),
 	)
 
 	// BasicModuleManager defines the module BasicManager is in charge of setting up basic,
@@ -884,7 +859,6 @@ func NewChainApp(
 		wasmtypes.ModuleName,
 		packetforwardtypes.ModuleName,
 		wasmlctypes.ModuleName,
-		ratelimittypes.ModuleName,
 	)
 
 	app.ModuleManager.SetOrderEndBlockers(
@@ -903,7 +877,6 @@ func NewChainApp(
 		wasmtypes.ModuleName,
 		packetforwardtypes.ModuleName,
 		wasmlctypes.ModuleName,
-		ratelimittypes.ModuleName,
 	)
 
 	// NOTE: The genutils module must occur after staking so that pools are
@@ -944,7 +917,6 @@ func NewChainApp(
 		wasmtypes.ModuleName, // wasm after ibc transfer
 		packetforwardtypes.ModuleName,
 		wasmlctypes.ModuleName,
-		ratelimittypes.ModuleName,
 	}
 	app.ModuleManager.SetOrderInitGenesis(genesisModuleOrder...)
 	app.ModuleManager.SetOrderExportGenesis(genesisModuleOrder...)
@@ -1006,7 +978,7 @@ func NewChainApp(
 				SigGasConsumer:  ante.DefaultSigVerificationGasConsumer,
 			},
 			IBCKeeper:             app.IBCKeeper,
-			WasmConfig:            &wasmConfig,
+			NodeConfig:            &nodeConfig,
 			WasmKeeper:            &app.WasmKeeper,
 			TXCounterStoreService: runtime.NewKVStoreService(keys[wasmtypes.StoreKey]),
 			CircuitKeeper:         &app.CircuitKeeper,
@@ -1347,7 +1319,6 @@ func initParamsKeeper(appCodec codec.BinaryCodec, legacyAmino *codec.LegacyAmino
 
 	paramsKeeper.Subspace(wasmtypes.ModuleName)
 	paramsKeeper.Subspace(packetforwardtypes.ModuleName)
-	paramsKeeper.Subspace(ratelimittypes.ModuleName)
 
 	return paramsKeeper
 }

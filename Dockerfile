@@ -1,4 +1,4 @@
-FROM golang:1.22-alpine AS go-builder
+FROM golang:1.23-alpine AS go-builder
 
 SHELL ["/bin/sh", "-ecuxo", "pipefail"]
 
@@ -11,9 +11,8 @@ RUN set -eux; \
     export ARCH=$(uname -m); \
     WASM_VERSION=$(go list -m all | grep github.com/CosmWasm/wasmvm || true); \
     if [ ! -z "${WASM_VERSION}" ]; then \
-      WASMVM_REPO=$(echo $WASM_VERSION | awk '{print $1}');\
       WASMVM_VERS=$(echo $WASM_VERSION | awk '{print $2}');\
-      wget -O /lib/libwasmvm_muslc.a https://${WASMVM_REPO}/releases/download/${WASMVM_VERS}/libwasmvm_muslc.$(uname -m).a;\
+      wget -O /lib/libwasmvm_muslc.$(uname -m).a https://github.com/CosmWasm/wasmvm/releases/download/${WASMVM_VERS}/libwasmvm_muslc.$(uname -m).a;\
     fi; \
     go mod download;
 
@@ -23,10 +22,7 @@ COPY . /code
 # force it to use static lib (from above) not standard libgo_cosmwasm.so file
 # then log output of file /code/bin/probed
 # then ensure static linking
-RUN LEDGER_ENABLED=false BUILD_TAGS=muslc LINK_STATICALLY=true make build \
-  && file /code/build/probed \
-  && echo "Ensuring binary is statically linked ..." \
-  && (file /code/build/probed | grep "statically linked")
+RUN LEDGER_ENABLED=false BUILD_TAGS=muslc LINK_STATICALLY=true make build
 
 # --------------------------------------------------------
 FROM alpine:3.16

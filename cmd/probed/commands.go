@@ -7,8 +7,8 @@ import (
 
 	cmtcfg "github.com/cometbft/cometbft/config"
 	dbm "github.com/cosmos/cosmos-db"
-	"github.com/prometheus/client_golang/prometheus"
 	"github.com/cosmos/probe/app"
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/spf13/cast"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
@@ -61,7 +61,7 @@ func initAppConfig() (string, interface{}) {
 	type CustomAppConfig struct {
 		serverconfig.Config
 
-		Wasm wasmtypes.WasmConfig `mapstructure:"wasm"`
+		Wasm wasmtypes.NodeConfig `mapstructure:"wasm"`
 	}
 
 	// Optionally allow the chain developer to overwrite the SDK's default
@@ -84,7 +84,7 @@ func initAppConfig() (string, interface{}) {
 
 	customAppConfig := CustomAppConfig{
 		Config: *srvCfg,
-		Wasm:   wasmtypes.DefaultWasmConfig(),
+		Wasm:   wasmtypes.DefaultNodeConfig(),
 	}
 
 	customAppTemplate := serverconfig.DefaultConfigTemplate
