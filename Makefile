@@ -244,16 +244,3 @@ ictest-ibc:
 ictest-wasm:
 	@echo "Running cosmwasm e2e test"
 	@cd interchaintest && go test -race -v -run TestCosmWasmIntegration .
-
-ictest-packetforward:
-	@echo "Running packet forward middleware e2e test"
-	@cd interchaintest && go test -race -v -run TestPacketForwardMiddleware .
-
-ictest-tokenfactory:
-	@echo "Running token factory e2e test"
-	@cd interchaintest && go test -race -v -run TestTokenFactory .
-
-ictest-ratelimit:
-	@echo "Running rate limit e2e test"
-	@cd interchaintest && go test -race -v -run TestIBCRateLimit .
-
