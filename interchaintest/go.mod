@@ -19,7 +19,7 @@ require (
 	cosmossdk.io/math v1.5.0
 	github.com/CosmWasm/wasmd v0.55.0-beta.0
 	github.com/cosmos/cosmos-sdk v0.50.11
-	github.com/cosmos/ibc-go/v10 v10.0.0-beta.0
+	github.com/cosmos/ibc-go/v10 v10.0.0-beta.1
 	github.com/strangelove-ventures/interchaintest/v8 v8.8.1
 	github.com/stretchr/testify v1.10.0
 	go.uber.org/zap v1.27.0
@@ -230,7 +230,7 @@ require (
 	google.golang.org/genproto/googleapis/api v0.0.0-20250115164207-1a7da9e5054f // indirect
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20250115164207-1a7da9e5054f // indirect
 	google.golang.org/grpc v1.69.4 // indirect
-	google.golang.org/protobuf v1.36.3 // indirect
+	google.golang.org/protobuf v1.36.5 // indirect
 	gopkg.in/ini.v1 v1.67.0 // indirect
 	gopkg.in/yaml.v2 v2.4.0 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
