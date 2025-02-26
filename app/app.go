@@ -133,13 +133,14 @@ import (
 	wasmtypes "github.com/CosmWasm/wasmd/x/wasm/types"
 	wasmvm "github.com/CosmWasm/wasmvm/v2"
 
-	wasmlc "github.com/cosmos/ibc-go/modules/light-clients/08-wasm"
-	wasmlckeeper "github.com/cosmos/ibc-go/modules/light-clients/08-wasm/keeper"
-	wasmlctypes "github.com/cosmos/ibc-go/modules/light-clients/08-wasm/types"
+	ibcwasm "github.com/cosmos/ibc-go/modules/light-clients/08-wasm"
+	"github.com/cosmos/ibc-go/modules/light-clients/08-wasm/blsverifier"
+	ibcwasmkeeper "github.com/cosmos/ibc-go/modules/light-clients/08-wasm/keeper"
+	ibcwasmtypes "github.com/cosmos/ibc-go/modules/light-clients/08-wasm/types"
 
-	// "github.com/cosmos/ibc-apps/middleware/packet-forward-middleware/v8/packetforward"
-	// packetforwardkeeper "github.com/cosmos/ibc-apps/middleware/packet-forward-middleware/v8/packetforward/keeper"
-	// packetforwardtypes "github.com/cosmos/ibc-apps/middleware/packet-forward-middleware/v8/packetforward/types"
+	"github.com/cosmos/ibc-apps/middleware/packet-forward-middleware/v8/packetforward"
+	packetforwardkeeper "github.com/cosmos/ibc-apps/middleware/packet-forward-middleware/v8/packetforward/keeper"
+	packetforwardtypes "github.com/cosmos/ibc-apps/middleware/packet-forward-middleware/v8/packetforward/types"
 
 	distr "github.com/cosmos/cosmos-sdk/x/distribution"
 	"github.com/cosmos/cosmos-sdk/x/gov"
@@ -231,9 +232,9 @@ type ChainApp struct {
 	TransferKeeper      ibctransferkeeper.Keeper
 
 	// Custom
-	WasmKeeper wasmkeeper.Keeper
-	// PacketForwardKeeper *packetforwardkeeper.Keeper
-	WasmClientKeeper wasmlckeeper.Keeper
+	WasmKeeper          wasmkeeper.Keeper
+	PacketForwardKeeper *packetforwardkeeper.Keeper
+	WasmClientKeeper    ibcwasmkeeper.Keeper
 
 	// the module manager
 	ModuleManager      *module.Manager
@@ -341,8 +342,8 @@ func NewChainApp(
 		wasmtypes.StoreKey,
 		icahosttypes.StoreKey,
 		icacontrollertypes.StoreKey,
-		// packetforwardtypes.StoreKey,
-		wasmlctypes.StoreKey,
+		packetforwardtypes.StoreKey,
+		ibcwasmtypes.StoreKey,
 	)
 
 	tkeys := storetypes.NewTransientStoreKeys(paramstypes.TStoreKey)
@@ -584,16 +585,16 @@ func NewChainApp(
 	)
 
 	// Create the packetfoward keeper
-	// app.PacketForwardKeeper = packetforwardkeeper.NewKeeper(
-	// 	appCodec,
-	// 	keys[packetforwardtypes.StoreKey],
-	// 	app.TransferKeeper, // will be zero-value here, reference is set later on with SetTransferKeeper.
-	// 	app.IBCKeeper.ChannelKeeper,
-	// 	app.BankKeeper,
-	// 	app.IBCKeeper.ChannelKeeper,
-	// 	authtypes.NewModuleAddress(govtypes.ModuleName).String(),
-	// )
-	// app.PacketForwardKeeper.SetTransferKeeper(app.TransferKeeper)
+	app.PacketForwardKeeper = packetforwardkeeper.NewKeeper(
+		appCodec,
+		runtime.NewKVStoreService(keys[packetforwardtypes.StoreKey]),
+		app.TransferKeeper, // will be zero-value here, reference is set later on with SetTransferKeeper.
+		app.IBCKeeper.ChannelKeeper,
+		app.BankKeeper,
+		app.IBCKeeper.ChannelKeeper,
+		authtypes.NewModuleAddress(govtypes.ModuleName).String(),
+	)
+	app.PacketForwardKeeper.SetTransferKeeper(app.TransferKeeper)
 
 	app.ICAHostKeeper = icahostkeeper.NewKeeper(
 		appCodec,
@@ -645,17 +646,18 @@ func NewChainApp(
 		wasmOpts...,
 	)
 
-	wasmLightClientQuerier := wasmlckeeper.QueryPlugins{
+	wasmLightClientQuerier := ibcwasmkeeper.QueryPlugins{
 		// Custom: MyCustomQueryPlugin(),
 		// `myAcceptList` is a `[]string` containing the list of gRPC query paths that the chain wants to allow for the `08-wasm` module to query.
 		// These queries must be registered in the chain's gRPC query router, be deterministic, and track their gas usage.
 		// The `AcceptListStargateQuerier` function will return a query plugin that will only allow queries for the paths in the `myAcceptList`.
 		// The query responses are encoded in protobuf unlike the implementation in `x/wasm`.
-		Stargate: wasmlckeeper.AcceptListStargateQuerier([]string{
+		Stargate: ibcwasmkeeper.AcceptListStargateQuerier([]string{
 			"/ibc.core.client.v1.Query/ClientState",
 			"/ibc.core.client.v1.Query/ConsensusState",
 			"/ibc.core.connection.v1.Query/Connection",
 		}, app.GRPCQueryRouter()),
+		Custom: blsverifier.CustomQuerier(),
 	}
 
 	dataDir := filepath.Join(homePath, "data")
@@ -666,14 +668,14 @@ func NewChainApp(
 		panic(fmt.Sprintf("failed to create VM for 08 light client: %s", err))
 	}
 
-	app.WasmClientKeeper = wasmlckeeper.NewKeeperWithVM(
+	app.WasmClientKeeper = ibcwasmkeeper.NewKeeperWithVM(
 		appCodec,
-		runtime.NewKVStoreService(keys[wasmlctypes.StoreKey]),
+		runtime.NewKVStoreService(keys[ibcwasmtypes.StoreKey]),
 		app.IBCKeeper.ClientKeeper,
 		authtypes.NewModuleAddress(govtypes.ModuleName).String(),
 		lc08,
 		bApp.GRPCQueryRouter(),
-		wasmlckeeper.WithQueryPlugins(&wasmLightClientQuerier),
+		ibcwasmkeeper.WithQueryPlugins(&wasmLightClientQuerier),
 	)
 
 	// Middleware Stacks
@@ -685,23 +687,23 @@ func NewChainApp(
 	var transferStack porttypes.IBCModule
 	transferStack = transfer.NewIBCModule(app.TransferKeeper)
 	transferStack = ibccallbacks.NewIBCMiddleware(transferStack, app.IBCKeeper.ChannelKeeper, wasmStackIBCHandler, maxCallbackGas)
-	// transferStack = packetforward.NewIBCMiddleware(
-	// 	transferStack,
-	// 	app.PacketForwardKeeper,
-	// 	0,
-	// 	packetforwardkeeper.DefaultForwardTransferPacketTimeoutTimestamp,
-	// )
+	transferStack = packetforward.NewIBCMiddleware(
+		transferStack,
+		app.PacketForwardKeeper,
+		0,
+		packetforwardkeeper.DefaultForwardTransferPacketTimeoutTimestamp,
+	)
 
 	// Create Interchain Accounts Stack
 	// SendPacket, since it is originating from the application to core IBC:
-	// icaAuthModuleKeeper.SendTx -> icaController.SendPacket -> fee.SendPacket -> channel.SendPacket
+	// icaAuthModuleKeeper.SendTx -> icaController.SendPacket -> channel.SendPacket
 	var icaControllerStack porttypes.IBCModule
 	// integration point for custom authentication modules
 	// see https://medium.com/the-interchain-foundation/ibc-go-v6-changes-to-interchain-accounts-and-how-it-impacts-your-chain-806c185300d7
 	icaControllerStack = icacontroller.NewIBCMiddleware(app.ICAControllerKeeper)
 
 	// RecvPacket, message that originates from core IBC and goes down to app, the flow is:
-	// channel.RecvPacket -> fee.OnRecvPacket -> icaHost.OnRecvPacket
+	// channel.RecvPacket -> icaHost.OnRecvPacket
 	var icaHostStack porttypes.IBCModule
 	icaHostStack = icahost.NewIBCModule(app.ICAHostKeeper)
 
@@ -725,8 +727,8 @@ func NewChainApp(
 	tmLightClientModule := ibctm.NewLightClientModule(appCodec, storeProvider)
 	clientKeeper.AddRoute(ibctm.ModuleName, &tmLightClientModule)
 
-	wasmLightClientModule := wasmlc.NewLightClientModule(app.WasmClientKeeper, storeProvider)
-	clientKeeper.AddRoute(wasmlctypes.ModuleName, &wasmLightClientModule)
+	wasmLightClientModule := ibcwasm.NewLightClientModule(app.WasmClientKeeper, storeProvider)
+	clientKeeper.AddRoute(ibcwasmtypes.ModuleName, &wasmLightClientModule)
 
 	// --- Module Options ---
 
@@ -775,8 +777,8 @@ func NewChainApp(
 		ibctm.NewAppModule(tmLightClientModule),
 		crisis.NewAppModule(app.CrisisKeeper, skipGenesisInvariants, app.GetSubspace(crisistypes.ModuleName)),
 		// custom
-		// packetforward.NewAppModule(app.PacketForwardKeeper, app.GetSubspace(packetforwardtypes.ModuleName)),
-		wasmlc.NewAppModule(app.WasmClientKeeper),
+		packetforward.NewAppModule(app.PacketForwardKeeper, app.GetSubspace(packetforwardtypes.ModuleName)),
+		ibcwasm.NewAppModule(app.WasmClientKeeper),
 	)
 
 	// BasicModuleManager defines the module BasicManager is in charge of setting up basic,
@@ -812,8 +814,8 @@ func NewChainApp(
 		ibcexported.ModuleName,
 		icatypes.ModuleName,
 		wasmtypes.ModuleName,
-		// packetforwardtypes.ModuleName,
-		wasmlctypes.ModuleName,
+		packetforwardtypes.ModuleName,
+		ibcwasmtypes.ModuleName,
 	)
 
 	app.ModuleManager.SetOrderEndBlockers(
@@ -828,8 +830,8 @@ func NewChainApp(
 		ibcexported.ModuleName,
 		icatypes.ModuleName,
 		wasmtypes.ModuleName,
-		// packetforwardtypes.ModuleName,
-		wasmlctypes.ModuleName,
+		packetforwardtypes.ModuleName,
+		ibcwasmtypes.ModuleName,
 	)
 
 	// NOTE: The genutils module must occur after staking so that pools are
@@ -863,8 +865,8 @@ func NewChainApp(
 		ibcexported.ModuleName,
 		icatypes.ModuleName,
 		wasmtypes.ModuleName, // wasm after ibc transfer
-		// packetforwardtypes.ModuleName,
-		wasmlctypes.ModuleName,
+		packetforwardtypes.ModuleName,
+		ibcwasmtypes.ModuleName,
 	}
 	app.ModuleManager.SetOrderInitGenesis(genesisModuleOrder...)
 	app.ModuleManager.SetOrderExportGenesis(genesisModuleOrder...)
@@ -942,7 +944,7 @@ func NewChainApp(
 	if manager := app.SnapshotManager(); manager != nil {
 		err := manager.RegisterExtensions(
 			wasmkeeper.NewWasmSnapshotter(app.CommitMultiStore(), &app.WasmKeeper),
-			wasmlckeeper.NewWasmSnapshotter(app.CommitMultiStore(), &app.WasmClientKeeper),
+			ibcwasmkeeper.NewWasmSnapshotter(app.CommitMultiStore(), &app.WasmClientKeeper),
 		)
 		if err != nil {
 			panic(fmt.Errorf("failed to register snapshot extension: %s", err))
@@ -1259,7 +1261,7 @@ func initParamsKeeper(appCodec codec.BinaryCodec, legacyAmino *codec.LegacyAmino
 	paramsKeeper.Subspace(icahosttypes.SubModuleName).WithKeyTable(icahosttypes.ParamKeyTable())
 
 	paramsKeeper.Subspace(wasmtypes.ModuleName)
-	// paramsKeeper.Subspace(packetforwardtypes.ModuleName)
+	paramsKeeper.Subspace(packetforwardtypes.ModuleName)
 
 	return paramsKeeper
 }
