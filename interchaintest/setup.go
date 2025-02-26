@@ -27,7 +27,7 @@ var (
 	Name    = "probe"
 	ChainID = "localchain-1"
 	Binary  = "probed"
-	Bech32  = "probe"
+	Bech32  = "cosmos"
 
 	NumberVals         = 1
 	NumberFullNodes    = 0
