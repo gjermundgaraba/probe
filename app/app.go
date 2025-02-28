@@ -14,6 +14,7 @@ import (
 	dbm "github.com/cosmos/cosmos-db"
 	"github.com/cosmos/gogoproto/proto"
 	ibccallbacks "github.com/cosmos/ibc-go/modules/apps/callbacks"
+	ibccallbacksv2 "github.com/cosmos/ibc-go/modules/apps/callbacks/v2"
 	ica "github.com/cosmos/ibc-go/v10/modules/apps/27-interchain-accounts"
 	icacontroller "github.com/cosmos/ibc-go/v10/modules/apps/27-interchain-accounts/controller"
 	icacontrollerkeeper "github.com/cosmos/ibc-go/v10/modules/apps/27-interchain-accounts/controller/keeper"
@@ -694,6 +695,10 @@ func NewChainApp(
 		packetforwardkeeper.DefaultForwardTransferPacketTimeoutTimestamp,
 	)
 
+	var ibcv2TransferStack ibcapi.IBCModule
+	ibcv2TransferStack = transferv2.NewIBCModule(app.TransferKeeper)
+	ibcv2TransferStack = ibccallbacksv2.NewIBCMiddleware(transferv2.NewIBCModule(app.TransferKeeper), app.IBCKeeper.ChannelKeeperV2, wasmStackIBCHandler, app.IBCKeeper.ChannelKeeperV2, maxCallbackGas)
+
 	// Create Interchain Accounts Stack
 	// SendPacket, since it is originating from the application to core IBC:
 	// icaAuthModuleKeeper.SendTx -> icaController.SendPacket -> channel.SendPacket
@@ -717,7 +722,7 @@ func NewChainApp(
 
 	// IBC v2
 	ibcRouterV2 := ibcapi.NewRouter()
-	ibcRouterV2.AddRoute(ibctransfertypes.PortID, transferv2.NewIBCModule(app.TransferKeeper))
+	ibcRouterV2.AddRoute(ibctransfertypes.PortID, ibcv2TransferStack)
 	app.IBCKeeper.SetRouterV2(ibcRouterV2)
 
 	// Light client modules

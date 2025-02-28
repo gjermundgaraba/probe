@@ -23,7 +23,7 @@ var (
 	VotingPeriod     = "15s"
 	MaxDepositPeriod = "10s"
 
-	Denom   = "uprobe"
+	Denom   = "stake"
 	Name    = "probe"
 	ChainID = "localchain-1"
 	Binary  = "probed"
