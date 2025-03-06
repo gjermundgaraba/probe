@@ -4,9 +4,6 @@ go 1.23.6
 
 replace github.com/syndtr/goleveldb => github.com/syndtr/goleveldb v1.0.1-0.20210819022825-2ae1ddf74ef7
 
-// TODO: remove this replace directive once the following PR is merged and released: https://github.com/CosmWasm/wasmd/pull/2139
-replace github.com/CosmWasm/wasmd => github.com/gjermundgaraba/wasmd v0.0.0-20250226195655-43308101e874
-
 require (
 	cosmossdk.io/api v0.7.6
 	cosmossdk.io/client/v2 v2.0.0-beta.5
@@ -21,17 +18,15 @@ require (
 	cosmossdk.io/x/nft v0.1.1
 	cosmossdk.io/x/tx v0.13.7
 	cosmossdk.io/x/upgrade v0.1.4
-	github.com/CosmWasm/wasmd v0.55.0-beta.0
+	github.com/CosmWasm/wasmd v0.55.0-beta.1
 	github.com/CosmWasm/wasmvm/v2 v2.2.2
 	github.com/cometbft/cometbft v0.38.15
 	github.com/cosmos/cosmos-db v1.1.1
 	github.com/cosmos/cosmos-sdk v0.50.12
 	github.com/cosmos/gogoproto v1.7.0
 	github.com/cosmos/ibc-apps/middleware/packet-forward-middleware/v8 v8.1.2-0.20250226191206-127357976074
-	github.com/cosmos/ibc-go/modules/apps/callbacks v0.3.1-0.20250226181540-d65db00ece7a
-	github.com/cosmos/ibc-go/modules/light-clients/08-wasm v0.6.1-0.20250226181012-d9f2f8899c3c
-	github.com/cosmos/ibc-go/modules/light-clients/08-wasm/blsverifier v0.0.0-20250221115439-3e6d5f597fc4
-	github.com/cosmos/ibc-go/v10 v10.0.0-beta.1
+	github.com/cosmos/ibc-go/modules/light-clients/08-wasm/v10 v10.0.0-rc.3
+	github.com/cosmos/ibc-go/v10 v10.0.0-rc.3
 	github.com/prometheus/client_golang v1.20.5
 	github.com/spf13/cast v1.7.1
 	github.com/spf13/cobra v1.8.1
