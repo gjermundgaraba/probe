@@ -687,13 +687,18 @@ func NewChainApp(
 	// Create Transfer Stack
 	var transferStack porttypes.IBCModule
 	transferStack = transfer.NewIBCModule(app.TransferKeeper)
-	transferStack = ibccallbacks.NewIBCMiddleware(transferStack, app.IBCKeeper.ChannelKeeper, wasmStackIBCHandler, maxCallbackGas)
+	// callbacks wraps the transfer stack as its base app, and uses PacketForwardKeeper as the ICS4Wrapper
+	// i.e. packet-forward-middleware is higher on the stack and sits between callbacks and the ibc channel keeper
+	// Since this is the lowest level middleware of the transfer stack, it should be the first entrypoint for transfer keeper's
+	// WriteAcknowledgement.
+	cbStack := ibccallbacks.NewIBCMiddleware(transferStack, app.PacketForwardKeeper, wasmStackIBCHandler, maxCallbackGas)
 	transferStack = packetforward.NewIBCMiddleware(
-		transferStack,
+		cbStack,
 		app.PacketForwardKeeper,
 		0,
 		packetforwardkeeper.DefaultForwardTransferPacketTimeoutTimestamp,
 	)
+	app.TransferKeeper.WithICS4Wrapper(cbStack)
 
 	var ibcv2TransferStack ibcapi.IBCModule
 	ibcv2TransferStack = transferv2.NewIBCModule(app.TransferKeeper)
