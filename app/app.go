@@ -137,9 +137,9 @@ import (
 	wasmtypes "github.com/CosmWasm/wasmd/x/wasm/types"
 	wasmvm "github.com/CosmWasm/wasmvm/v2"
 
-	wasmlc "github.com/cosmos/ibc-go/modules/light-clients/08-wasm"
-	wasmlckeeper "github.com/cosmos/ibc-go/modules/light-clients/08-wasm/keeper"
-	wasmlctypes "github.com/cosmos/ibc-go/modules/light-clients/08-wasm/types"
+	ibcwasm "github.com/cosmos/ibc-go/modules/light-clients/08-wasm"
+	ibcwasmkeeper "github.com/cosmos/ibc-go/modules/light-clients/08-wasm/keeper"
+	ibcwasmtypes "github.com/cosmos/ibc-go/modules/light-clients/08-wasm/types"
 
 	"github.com/cosmos/ibc-apps/middleware/packet-forward-middleware/v8/packetforward"
 	packetforwardkeeper "github.com/cosmos/ibc-apps/middleware/packet-forward-middleware/v8/packetforward/keeper"
@@ -240,7 +240,7 @@ type ChainApp struct {
 	// Custom
 	WasmKeeper          wasmkeeper.Keeper
 	PacketForwardKeeper *packetforwardkeeper.Keeper
-	WasmClientKeeper    wasmlckeeper.Keeper
+	WasmClientKeeper    ibcwasmkeeper.Keeper
 
 	ScopedIBCKeeper           capabilitykeeper.ScopedKeeper
 	ScopedICAHostKeeper       capabilitykeeper.ScopedKeeper
@@ -358,7 +358,7 @@ func NewChainApp(
 		icahosttypes.StoreKey,
 		icacontrollertypes.StoreKey,
 		packetforwardtypes.StoreKey,
-		wasmlctypes.StoreKey,
+		ibcwasmtypes.StoreKey,
 	)
 
 	tkeys := storetypes.NewTransientStoreKeys(paramstypes.TStoreKey)
@@ -694,13 +694,13 @@ func NewChainApp(
 		wasmOpts...,
 	)
 
-	wasmLightClientQuerier := wasmlctypes.QueryPlugins{
+	wasmLightClientQuerier := ibcwasmtypes.QueryPlugins{
 		// Custom: MyCustomQueryPlugin(),
 		// `myAcceptList` is a `[]string` containing the list of gRPC query paths that the chain wants to allow for the `08-wasm` module to query.
 		// These queries must be registered in the chain's gRPC query router, be deterministic, and track their gas usage.
 		// The `AcceptListStargateQuerier` function will return a query plugin that will only allow queries for the paths in the `myAcceptList`.
 		// The query responses are encoded in protobuf unlike the implementation in `x/wasm`.
-		Stargate: wasmlctypes.AcceptListStargateQuerier([]string{
+		Stargate: ibcwasmtypes.AcceptListStargateQuerier([]string{
 			"/ibc.core.client.v1.Query/ClientState",
 			"/ibc.core.client.v1.Query/ConsensusState",
 			"/ibc.core.connection.v1.Query/Connection",
@@ -715,14 +715,14 @@ func NewChainApp(
 		panic(fmt.Sprintf("failed to create VM for 08 light client: %s", err))
 	}
 
-	app.WasmClientKeeper = wasmlckeeper.NewKeeperWithVM(
+	app.WasmClientKeeper = ibcwasmkeeper.NewKeeperWithVM(
 		appCodec,
-		runtime.NewKVStoreService(keys[wasmlctypes.StoreKey]),
+		runtime.NewKVStoreService(keys[ibcwasmtypes.StoreKey]),
 		app.IBCKeeper.ClientKeeper,
 		authtypes.NewModuleAddress(govtypes.ModuleName).String(),
 		lc08,
 		bApp.GRPCQueryRouter(),
-		wasmlckeeper.WithQueryPlugins(&wasmLightClientQuerier),
+		ibcwasmkeeper.WithQueryPlugins(&wasmLightClientQuerier),
 	)
 
 	// Middleware Stacks
@@ -818,7 +818,7 @@ func NewChainApp(
 		crisis.NewAppModule(app.CrisisKeeper, skipGenesisInvariants, app.GetSubspace(crisistypes.ModuleName)),
 		// custom
 		packetforward.NewAppModule(app.PacketForwardKeeper, app.GetSubspace(packetforwardtypes.ModuleName)),
-		wasmlc.NewAppModule(app.WasmClientKeeper),
+		ibcwasm.NewAppModule(app.WasmClientKeeper),
 	)
 
 	// BasicModuleManager defines the module BasicManager is in charge of setting up basic,
@@ -858,7 +858,7 @@ func NewChainApp(
 		ibcfeetypes.ModuleName,
 		wasmtypes.ModuleName,
 		packetforwardtypes.ModuleName,
-		wasmlctypes.ModuleName,
+		ibcwasmtypes.ModuleName,
 	)
 
 	app.ModuleManager.SetOrderEndBlockers(
@@ -876,7 +876,7 @@ func NewChainApp(
 		ibcfeetypes.ModuleName,
 		wasmtypes.ModuleName,
 		packetforwardtypes.ModuleName,
-		wasmlctypes.ModuleName,
+		ibcwasmtypes.ModuleName,
 	)
 
 	// NOTE: The genutils module must occur after staking so that pools are
@@ -916,7 +916,7 @@ func NewChainApp(
 		ibcfeetypes.ModuleName,
 		wasmtypes.ModuleName, // wasm after ibc transfer
 		packetforwardtypes.ModuleName,
-		wasmlctypes.ModuleName,
+		ibcwasmtypes.ModuleName,
 	}
 	app.ModuleManager.SetOrderInitGenesis(genesisModuleOrder...)
 	app.ModuleManager.SetOrderExportGenesis(genesisModuleOrder...)
@@ -995,7 +995,7 @@ func NewChainApp(
 	if manager := app.SnapshotManager(); manager != nil {
 		err := manager.RegisterExtensions(
 			wasmkeeper.NewWasmSnapshotter(app.CommitMultiStore(), &app.WasmKeeper),
-			wasmlckeeper.NewWasmSnapshotter(app.CommitMultiStore(), &app.WasmClientKeeper),
+			ibcwasmkeeper.NewWasmSnapshotter(app.CommitMultiStore(), &app.WasmClientKeeper),
 		)
 		if err != nil {
 			panic(fmt.Errorf("failed to register snapshot extension: %s", err))
@@ -1048,8 +1048,8 @@ func NewChainApp(
 			panic(fmt.Sprintf("failed initialize pinned codes %s", err))
 		}
 
-		if err := wasmlckeeper.InitializePinnedCodes(ctx); err != nil {
-			panic(fmt.Sprintf("wasmlckeeper failed initialize pinned codes %s", err))
+		if err := ibcwasmkeeper.InitializePinnedCodes(ctx); err != nil {
+			panic(fmt.Sprintf("ibcwasmkeeper failed initialize pinned codes %s", err))
 		}
 	}
 
