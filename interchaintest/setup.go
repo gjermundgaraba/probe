@@ -16,18 +16,18 @@ import (
 	sdk "github.com/cosmos/cosmos-sdk/types"
 
 	wasm "github.com/CosmWasm/wasmd/x/wasm/types"
-	ibcconntypes "github.com/cosmos/ibc-go/v8/modules/core/03-connection/types"
+	ibcconntypes "github.com/cosmos/ibc-go/v10/modules/core/03-connection/types"
 )
 
 var (
 	VotingPeriod     = "15s"
 	MaxDepositPeriod = "10s"
 
-	Denom   = "uprobe"
+	Denom   = "stake"
 	Name    = "probe"
 	ChainID = "localchain-1"
 	Binary  = "probed"
-	Bech32  = "probe"
+	Bech32  = "cosmos"
 
 	NumberVals         = 1
 	NumberFullNodes    = 0
