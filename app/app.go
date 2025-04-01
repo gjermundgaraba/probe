@@ -1002,7 +1002,7 @@ func NewChainApp(
 		}
 
 		if err := app.WasmClientKeeper.InitializePinnedCodes(ctx); err != nil {
-			panic(fmt.Sprintf("wasmlckeeper failed initialize pinned codes %s", err))
+			panic(fmt.Sprintf("WasmClientKeeper failed initialize pinned codes %s", err))
 		}
 	}
 
