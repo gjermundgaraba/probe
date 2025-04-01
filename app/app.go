@@ -153,7 +153,7 @@ import (
 const (
 	appName      = "probe"
 	NodeDir      = ".probe"
-	Bech32Prefix = "probe"
+	Bech32Prefix = "cosmos"
 )
 
 // These constants are derived from the above variables.
