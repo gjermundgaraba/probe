@@ -702,7 +702,13 @@ func NewChainApp(
 
 	var ibcv2TransferStack ibcapi.IBCModule
 	ibcv2TransferStack = transferv2.NewIBCModule(app.TransferKeeper)
-	ibcv2TransferStack = ibccallbacksv2.NewIBCMiddleware(transferv2.NewIBCModule(app.TransferKeeper), app.IBCKeeper.ChannelKeeperV2, wasmStackIBCHandler, app.IBCKeeper.ChannelKeeperV2, maxCallbackGas)
+	ibcv2TransferStack = ibccallbacksv2.NewIBCMiddleware(
+		transferv2.NewIBCModule(app.TransferKeeper),
+		app.IBCKeeper.ChannelKeeperV2,
+		wasmStackIBCHandler,
+		app.IBCKeeper.ChannelKeeperV2,
+		maxCallbackGas,
+	)
 
 	// Create Interchain Accounts Stack
 	// SendPacket, since it is originating from the application to core IBC:
